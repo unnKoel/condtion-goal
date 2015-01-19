@@ -4,26 +4,18 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import com.d1xn.common.base.FileCache;
-import com.d1xn.common.json.JSONException;
-import com.d1xn.common.json.JSONListObj;
-import com.d1xn.common.json.JSONObject;
-import com.d1xn.common.log.Log;
-import com.d1xn.common.rest.TableVO;
-import com.d1xn.common.util.JSONObjUtil;
-import com.d1xn.common.vo.JSONResultVO;
-import com.d1xn.common.vo.ResultVO;
-import com.d1xn.ddal.client.base.DDALAddOperator;
-import com.d1xn.ddal.client.base.DDALOperator;
-import com.d1xn.ddal.client.base.DDALUpdateOperator;
-import com.d1xn.ddal.client.socket.AsynDDALHelper;
-import com.d1xn.ddal.client.socket.ddal.Callback;
-import com.d1xn.ddal.client.socket.ddal.ResListCallback;
+
+import net.sf.json.JSONArray;
+import net.sf.json.JSONObject;
+
+import org.apache.log4j.Logger;
+
+import com.wind.goal.FileCache;
+import com.wind.goal.ParamterVO;
 import com.wind.goal.comparator.ParamComparator.CompareParamVO;
-import com.wind.goal.res.PlatformConditionDefine;
-import com.wind.goal.res.UserCondition;
-import com.wind.goal.res.UserConditionId;
-import com.wind.goal.vo.ParamterVO;
+import com.wind.goal.dao.IUserConditionDao;
+import com.wind.goal.dao.po.ConditionValue;
+import com.wind.goal.dao.po.UserCondition;
 
 /**
  * 达成要求条件收集
@@ -32,84 +24,50 @@ import com.wind.goal.vo.ParamterVO;
  * @version 1.0 2014-3-14
  */
 public class ConditionRequireFilter extends ConditionFilter {
-	private AsynDDALHelper asynHelper;
-	private ConditionDefineCache conditionDefineCache; // 条件定义缓存
+	private static final Logger logger = Logger.getLogger(ConditionRequireFilter.class);
+
+	private IUserConditionDao userConditionDao; // 用户条件Dao
+	private ConditionValueCache conditionDefineCache; // 条件定义缓存
 
 	public ConditionRequireFilter(String conditionFilePath) {
-		conditionDefineCache = new ConditionDefineCache(conditionFilePath);
-	}
-
-	public AsynDDALHelper getAsynHelper() {
-		return asynHelper;
-	}
-
-	public void setAsynHelper(AsynDDALHelper asynHelper) {
-		this.asynHelper = asynHelper;
+		conditionDefineCache = new ConditionValueCache(conditionFilePath);
 	}
 
 	@Override
 	public void filte(Object conditions) {
-		/**
-		 * 获取所属条件类别的条件组
+		/*
+		 * 获取条件值列表
 		 */
 		@SuppressWarnings("unchecked")
 		final List<Object> filtedConditionIds = (List<Object>) conditions;
 		if (filtedConditionIds.isEmpty()) return;
-		final Map<Integer, List<PlatformConditionDefine>> conditionDefinesByCagory = new HashMap<Integer, List<PlatformConditionDefine>>();
-		List<Object> ids = new ArrayList<Object>();
+		final Map<Integer, List<ConditionValue>> conditionValuesByCondition = new HashMap<Integer, List<ConditionValue>>();
+		List<Integer> conditionIds = new ArrayList<Integer>();
 		for (Object filtedConditionId : filtedConditionIds) {
-			Integer condCategoryId = (Integer) filtedConditionId;
-			List<PlatformConditionDefine> conditionDefines = conditionDefineCache
-				.getConditionDefineByCategoryId(condCategoryId);
-			conditionDefinesByCagory.put(condCategoryId, conditionDefines);
-			ids.add(new UserConditionId(event.getUserId(), condCategoryId));
+			Integer conditionId = (Integer) filtedConditionId;
+			List<ConditionValue> conditionDefines = conditionDefineCache
+				.getCondValuesByCondId(conditionId);
+			conditionValuesByCondition.put(conditionId, conditionDefines);
+			conditionIds.add(conditionId);
 		}
-		/**
-		 * 查询用户条件记录参数
-		 */
-		asynHelper.gets(UserCondition.class, ids, new ResListCallback<UserCondition>() {
 
-			@Override
-			public void succeed(List<UserCondition> userConditions) throws Exception {
-				List<Integer> unUserConditionList = new ArrayList<Integer>(); // 用户条件记录表不存在的条件类别收集
-				Map<Integer, String> userCondtionMap = new HashMap<Integer, String>(); // 存在的条件类别收集
-				if (userConditions == null) {
-					unUserConditionList.addAll(conditionDefinesByCagory.keySet());
+		List<UserCondition> userConditions = userConditionDao.batchFindUserCondition(event.getUserId(), conditionIds);
+		List<Integer> unUserConditionList = new ArrayList<Integer>(); // 用户条件记录表不存在的条件类别收集
+		Map<Integer, String> userCondtionMap = new HashMap<Integer, String>(); // 存在的条件类别收集
+		if (userConditions == null) {
+			unUserConditionList.addAll(conditionValuesByCondition.keySet());
+		} else {
+			for (UserCondition userCondition : userConditions) {
+				Integer conditionId = userCondition.getConditionId();
+				if (conditionValuesByCondition.containsKey(conditionId)) {
+					userCondtionMap.put(conditionId, userCondition.getConditionValue());
 				} else {
-					for (UserCondition userCondition : userConditions) {
-						Integer conCategoryId = userCondition.getId().getICategoryId();
-						if (conditionDefinesByCagory.containsKey(conCategoryId)) {
-							userCondtionMap.put(conCategoryId, userCondition.getCSatisfyClaim());
-						} else {
-							unUserConditionList.add(conCategoryId);
-						}
-					}
+					unUserConditionList.add(conditionId);
 				}
-				filtedConditionIds.clear(); // 清空收集器，放入满足条件参数的条件ID组
-				List<DDALOperator> operatorList = new ArrayList<DDALOperator>();
-				userCondtionUnExistProcess(unUserConditionList, conditionDefinesByCagory, filtedConditionIds, operatorList);
-				userConditionExistProcess(userCondtionMap, conditionDefinesByCagory, filtedConditionIds, operatorList);
-				asynHelper.batchSave(operatorList, new Callback() {
-					@Override
-					public void succeed(JSONResultVO result) throws Exception {
-						if (result.isErrorVO()) {
-							Log.error(this.getClass(), result.getErrorMsg());
-							return;
-						}
-					}
-
-					@Override
-					public void failure(ResultVO result) throws Exception {
-						Log.error(this.getClass(), result.getErrorMsg());
-					}
-				});
 			}
-
-			@Override
-			public void failure(ResultVO result) throws Exception {
-				Log.error(this.getClass(), result.getErrorMsg());
-			}
-		});
+		}
+		userCondtionUnExistProcess(unUserConditionList, conditionValuesByCondition, filtedConditionIds);
+		userConditionExistProcess(userCondtionMap, conditionValuesByCondition, filtedConditionIds);
 	}
 
 	/**
@@ -119,40 +77,36 @@ public class ConditionRequireFilter extends ConditionFilter {
 	 * @param idenConditionMap
 	 *            通过身份过滤的条件Map
 	 */
-	private void userCondtionUnExistProcess(List<Integer> unUserConditionCategoryList,
-		Map<Integer, List<PlatformConditionDefine>> conditionDefinesByCagory, List<Object> filtedConditionIds,
-		List<DDALOperator> operatorList) {
-		if (unUserConditionCategoryList == null || unUserConditionCategoryList.isEmpty()) return;
-		/**
-		 * 查询属于条件类别的条件列表
-		 */
-		for (Integer conditionCategoryId : unUserConditionCategoryList) {
-			List<PlatformConditionDefine> conditionDefineList = conditionDefinesByCagory.get(conditionCategoryId);
-			try {
-				/**
-				 * 所有相关条件判别是否完成
-				 */
-				Map<String, Object> currentUserValueMap = new HashMap<String, Object>();// 当前用户条件类别记录值
-				Map<ParamterVO, CompareParamVO> totalCompareParams = new HashMap<ParamterVO, CompareParamVO>();
-				for (PlatformConditionDefine conditionDefine : conditionDefineList) {
-					JSONObject satisfyClaimJson = new JSONObject(conditionDefine.getCRequireValue()); // 转换JSON
-					Map<String, Object> satisfyClaimMap = satisfyClaimJson.getMap(); // 转成当前用户条件数据Map
-					Map<String, Object> eventParamMap = event.getEventParamMap(); // 事件参数值
-					if (conditionComparator.compare(currentUserValueMap, satisfyClaimMap, eventParamMap, totalCompareParams)) {
-						filtedConditionIds.add(conditionDefine.getId().getIConditionId());
-					}
+	private void userCondtionUnExistProcess(List<Integer> unUserConditionList,
+		Map<Integer, List<ConditionValue>> conditionValuesByConId, List<Object> filtedConditionIds) {
+		if (unUserConditionList == null || unUserConditionList.isEmpty()) return;
+		List<UserCondition> userConditions = new ArrayList<UserCondition>();
+		for (Integer conditionId : unUserConditionList) {
+			List<ConditionValue> conditionValueList = conditionValuesByConId.get(conditionId); // 查询条件值列表
+			/*
+			 * 所有相关条件判别是否完成
+			 */
+			Map<String, Object> currentUserValueMap = new HashMap<String, Object>();// 当前用户条件类别记录值
+			Map<ParamterVO, CompareParamVO> totalCompareParams = new HashMap<ParamterVO, CompareParamVO>();
+			for (ConditionValue conditionValue : conditionValueList) {
+				@SuppressWarnings("unchecked")
+				Map<String, Object> satisfyClaimMap = (Map<String, Object>) JSONObject.toBean(JSONObject
+					.fromObject(conditionValue.getRequireValue()),
+					HashMap.class);
+				Map<String, Object> eventParamMap = event.getEventParamMap(); // 事件参数值
+				if (conditionComparator.compare(currentUserValueMap, satisfyClaimMap, eventParamMap, totalCompareParams)) {
+					filtedConditionIds.add(conditionValue.getConditionId());
 				}
-				updateUserValueMap(currentUserValueMap, totalCompareParams);
-				/**
-				 * 更新用户条件类别记录
-				 */
-				UserConditionId id = new UserConditionId(event.getUserId(), conditionCategoryId);
-				UserCondition userCondition = new UserCondition(id, new JSONObject(currentUserValueMap).toString());
-				operatorList.add(new DDALAddOperator(userCondition));
-			} catch (JSONException e) {
-				Log.error(this.getClass(), e);
 			}
+			updateUserValueMap(currentUserValueMap, totalCompareParams);
+			/*
+			 * 更新用户条件类别记录
+			 */
+			UserCondition userCondition = new UserCondition(event.getUserId(), conditionId, JSONObject.fromObject(
+				currentUserValueMap).toString());
+			userConditions.add(userCondition);
 		}
+		userConditionDao.batchAdd(userConditions);
 	}
 
 	/**
@@ -163,42 +117,42 @@ public class ConditionRequireFilter extends ConditionFilter {
 	 * @param idenConditionMap
 	 *            通过身份过滤的条件Map
 	 */
-	private void userConditionExistProcess(Map<Integer, String> userCondtionCategoryMap,
-		Map<Integer, List<PlatformConditionDefine>> conditionDefinesByCagory, List<Object> filtedConditionIds,
-		List<DDALOperator> operatorList) {
-		if (userCondtionCategoryMap == null || userCondtionCategoryMap.isEmpty()) return;
-		for (Integer conditionCategoryId : userCondtionCategoryMap.keySet()) {
-			List<PlatformConditionDefine> conditionDefineList = conditionDefinesByCagory.get(conditionCategoryId);
-			try {
-				/**
-				 * 所有相关条件判别是否完成
-				 */
-				Map<String, Object> currentUserValueMap = new JSONObject(userCondtionCategoryMap.get(conditionCategoryId))
-					.getMap();// 当前用户条件类别记录值
-				Map<ParamterVO, CompareParamVO> totalCompareParams = new HashMap<ParamterVO, CompareParamVO>();
-				for (PlatformConditionDefine conditionDefine : conditionDefineList) {
-					String cRequireValue = conditionDefine.getCRequireValue();
-					if (cRequireValue == null || cRequireValue.isEmpty()) {
-						filtedConditionIds.add(conditionDefine.getId().getIConditionId());
-					}
-					JSONObject satisfyClaimJson = new JSONObject(conditionDefine.getCRequireValue()); // 转换JSON
-					Map<String, Object> satisfyClaimMap = satisfyClaimJson.getMap(); // 转成当前用户条件数据Map
-					Map<String, Object> eventParamMap = event.getEventParamMap(); // 事件参数值
-					if (conditionComparator.compare(currentUserValueMap, satisfyClaimMap, eventParamMap, totalCompareParams)) {
-						filtedConditionIds.add(conditionDefine.getId().getIConditionId());
-					}
+	private void userConditionExistProcess(Map<Integer, String> userCondtionValueMap,
+		Map<Integer, List<ConditionValue>> conditionValuesByConId, List<Object> filtedConditionIds) {
+		if (userCondtionValueMap == null || userCondtionValueMap.isEmpty()) return;
+		List<UserCondition> userConditions = new ArrayList<UserCondition>();
+		for (Integer conditionId : userCondtionValueMap.keySet()) {
+			List<ConditionValue> conditionValueList = conditionValuesByConId.get(conditionId);
+			/*
+			 * 所有相关条件判别是否完成
+			 */
+			@SuppressWarnings("unchecked")
+			Map<String, Object> currentUserValueMap = (Map<String, Object>) JSONObject.toBean(JSONObject
+				.fromObject(userCondtionValueMap.get(conditionId)), HashMap.class);// 当前用户条件类别记录值
+			Map<ParamterVO, CompareParamVO> totalCompareParams = new HashMap<ParamterVO, CompareParamVO>();
+			for (ConditionValue conditionValue : conditionValueList) {
+				String cRequireValue = conditionValue.getRequireValue();
+				if (cRequireValue == null || cRequireValue.isEmpty()) {
+					filtedConditionIds.add(conditionValue.getConditionId());
 				}
-				/**
-				 * 有参数变化,更新用户条件类别记录
-				 */
-				if (updateUserValueMap(currentUserValueMap, totalCompareParams)) {
-					UserConditionId id = new UserConditionId(event.getUserId(), conditionCategoryId);
-					UserCondition userCondition = new UserCondition(id, new JSONObject(currentUserValueMap).toString());
-					operatorList.add(new DDALUpdateOperator(id, userCondition));
+				JSONObject satisfyClaimJson = JSONObject.fromObject(conditionValue.getRequireValue()); // 转换JSON
+				@SuppressWarnings("unchecked")
+				Map<String, Object> satisfyClaimMap = (Map<String, Object>) JSONObject.toBean(satisfyClaimJson,
+					HashMap.class); // 转成当前用户条件数据Map
+				Map<String, Object> eventParamMap = event.getEventParamMap(); // 事件参数值
+				if (conditionComparator.compare(currentUserValueMap, satisfyClaimMap, eventParamMap, totalCompareParams)) {
+					filtedConditionIds.add(conditionValue.getConditionId());
 				}
-			} catch (JSONException e) {
-				Log.error(this.getClass(), e);
 			}
+			/*
+			 * 有参数变化,更新用户条件类别记录
+			 */
+			if (updateUserValueMap(currentUserValueMap, totalCompareParams)) {
+				UserCondition userCondition = new UserCondition(event.getUserId(), conditionId, JSONObject.fromObject(
+					currentUserValueMap).toString());
+				userConditions.add(userCondition);
+			}
+			userConditionDao.batchUpdate(userConditions);
 		}
 	}
 
@@ -229,47 +183,48 @@ public class ConditionRequireFilter extends ConditionFilter {
 	 * @author zhouyanjun
 	 * @version 1.0 2014-3-16
 	 */
-	class ConditionDefineCache extends FileCache {
-		private Map<Integer, List<PlatformConditionDefine>> conditionMap;
+	class ConditionValueCache extends FileCache {
+		private Map<Integer, List<ConditionValue>> conditionValueMap;
 
-		public ConditionDefineCache(String filePath) {
+		public ConditionValueCache(String filePath) {
 			super(filePath);
 		}
 
 		@Override
 		protected void loadData() {
-			if (conditionMap == null) {
-				conditionMap = new HashMap<Integer, List<PlatformConditionDefine>>();
+			if (conditionValueMap == null) {
+				conditionValueMap = new HashMap<Integer, List<ConditionValue>>();
 			} else {
-				conditionMap.clear();
+				conditionValueMap.clear();
 			}
 			try {
-				JSONObject json = JSONObjUtil.file2JsonObject(getFile());
-				JSONListObj listObj = new JSONListObj(json);
-				TableVO<PlatformConditionDefine> table = new TableVO<PlatformConditionDefine>(PlatformConditionDefine.class,
-					listObj);
-				List<PlatformConditionDefine> list = table.getObjectList();
+				String fileContent = this.readFile();
+				JSONArray jsonArray = JSONArray.fromObject(fileContent);
+				@SuppressWarnings("unchecked")
+				List<ConditionValue> list = (List<ConditionValue>) JSONArray.toArray(
+					jsonArray, ConditionValue.class);
+
 				if (list != null && !list.isEmpty()) {
-					for (PlatformConditionDefine c : list) {
-						Integer ICategoryId = c.getId().getICategoryId();
-						if (conditionMap.containsKey(ICategoryId)) {
-							conditionMap.get(ICategoryId).add(c);
+					for (ConditionValue c : list) {
+						Integer conditionId = c.getConditionId();
+						if (conditionValueMap.containsKey(conditionId)) {
+							conditionValueMap.get(conditionId).add(c);
 						} else {
-							List<PlatformConditionDefine> conditionDefines = new ArrayList<PlatformConditionDefine>();
-							conditionDefines.add(c);
-							conditionMap.put(ICategoryId, conditionDefines);
+							List<ConditionValue> conditionValues = new ArrayList<ConditionValue>();
+							conditionValues.add(c);
+							conditionValueMap.put(conditionId, conditionValues);
 						}
 					}
 				}
 			} catch (Exception e) {
-				Log.error(this.getClass(), e);
+				logger.error(e.getMessage(), e);
 			}
 		}
 
 		/** 根据条件类别ID获取平台条件定义列表 **/
-		public List<PlatformConditionDefine> getConditionDefineByCategoryId(Integer condCategoryID) {
+		public List<ConditionValue> getCondValuesByCondId(Integer conditionID) {
 			loadFile();
-			return conditionMap.get(condCategoryID);
+			return conditionValueMap.get(conditionID);
 		}
 	}
 }

@@ -2,11 +2,12 @@ package com.wind.goal.handle;
 
 import java.util.ArrayList;
 import java.util.List;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
-import com.d1xn.common.log.Log;
+import java.util.concurrent.ExecutorService;
+import org.apache.log4j.Logger;
+
+import com.wind.goal.MountGoalPoint;
 import com.wind.goal.event.Event;
 import com.wind.goal.filter.ConditionFilter;
-import com.wind.goal.goal.MountGoalPoint;
 
 /**
  * 条件达成处理器
@@ -15,9 +16,10 @@ import com.wind.goal.goal.MountGoalPoint;
  * @version 1.0 2014-3-13
  */
 public class ConditionHandler implements EventHandler {
+	private static final Logger logger = Logger.getLogger(ConditionHandler.class);
 	private List<ConditionFilter> filters; // 条件收集器（如果不设置，则不进行条件收集，直接处理挂载目标）
 	private List<MountGoalPoint> mountGoalPoints; // 挂载目标
-	private ThreadPoolTaskExecutor threadPool; // 线程池
+	private ExecutorService threadPool; // 线程池
 
 	@Override
 	public boolean isHanle(Event evnet) {
@@ -52,7 +54,7 @@ public class ConditionHandler implements EventHandler {
 							try {
 								mountGoalPoint.completeUserGoal();
 							} catch (Exception e) {
-								Log.error(this.getClass(), e);
+								logger.error(this.getClass(), e);
 							}
 						}
 					});
@@ -63,11 +65,11 @@ public class ConditionHandler implements EventHandler {
 		}
 	}
 
-	public ThreadPoolTaskExecutor getThreadPool() {
+	public ExecutorService getThreadPool() {
 		return threadPool;
 	}
 
-	public void setThreadPool(ThreadPoolTaskExecutor threadPool) {
+	public void setThreadPool(ExecutorService threadPool) {
 		this.threadPool = threadPool;
 	}
 

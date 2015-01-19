@@ -5,9 +5,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import sun.rmi.runtime.Log;
+import net.sf.json.JSONArray;
+import net.sf.json.JSONObject;
 
-import com.wind.goal.res.PlatformConditionCategoryDefine;
+import org.apache.log4j.Logger;
+
+import com.wind.goal.FileCache;
+import com.wind.goal.dao.po.Condition;
 
 /**
  * 条件特征收集
@@ -16,11 +20,11 @@ import com.wind.goal.res.PlatformConditionCategoryDefine;
  * @version 1.0 2014-3-14
  */
 public class ConditionFeatureFilter extends ConditionFilter {
-
-	private ConditionCategoryDefineCache conditionCache;
+	private static final Logger logger = Logger.getLogger(ConditionFeatureFilter.class);
+	private ConditionCache conditionCache;
 
 	public ConditionFeatureFilter(String conditionCategoryFilePath) {
-		conditionCache = new ConditionCategoryDefineCache(conditionCategoryFilePath);
+		conditionCache = new ConditionCache(conditionCategoryFilePath);
 	}
 
 	@Override
@@ -28,86 +32,84 @@ public class ConditionFeatureFilter extends ConditionFilter {
 		@SuppressWarnings("unchecked")
 		List<Object> filtedConditionIds = (List<Object>) conditions;
 		String eventNO = event.getEventNO();
-		/**
+		/*
 		 * 根据事件号查询所属条件
 		 */
-		List<PlatformConditionCategoryDefine> conditionCategoryList = conditionCache
-			.getConditionCategoryDefineByEventNO(eventNO);
-		if (conditionCategoryList == null || conditionCategoryList.isEmpty()) return;
-		for (PlatformConditionCategoryDefine conditionCategory : conditionCategoryList) {
-			String cIdentifyParams = conditionCategory.getCIdentifyParams();
-			if (null == cIdentifyParams || cIdentifyParams.isEmpty()) {
-				filtedConditionIds.add(conditionCategory.getICategoryId());
+		List<Condition> conditionList = conditionCache
+			.getConditionByEventNO(eventNO);
+		if (conditionList == null || conditionList.isEmpty()) return;
+		for (Condition condition : conditionList) {
+			String identifyParams = condition.getIdentifyParams();
+			if (null == identifyParams || identifyParams.isEmpty()) {
+				filtedConditionIds.add(condition.getConditionId());
 				continue;
 			}
-			try {
-				JSONObject json = new JSONObject(cIdentifyParams); // 转换JSON
-				Map<String, Object> cIdentifyParamMap = json.getMap(); // 转成身份参数Map
-				Map<String, Object> eventParamMap = event.getEventParamMap(); // 事件参数（由事件发生者传过来）
-				Map<String, Object> currentUserValueMap = new HashMap<String, Object>();
-				/**
-				 * 通过身份参数找出符合的条件类别
-				 */
-				if (conditionComparator.compare(currentUserValueMap, cIdentifyParamMap, eventParamMap, null)) {
-					filtedConditionIds.add(conditionCategory.getICategoryId());
-				}
-			} catch (JSONException e) {
-				e.printStackTrace();
+			JSONObject json = JSONObject.fromObject(identifyParams); // 转成JSON
+			@SuppressWarnings("unchecked")
+			Map<String, Object> cIdentifyParamMap = (Map<String, Object>) JSONObject.toBean(json, HashMap.class); // 转成身份参数Map
+			Map<String, Object> eventParamMap = event.getEventParamMap(); // 事件参数（由事件发生者传过来）
+			Map<String, Object> currentUserValueMap = new HashMap<String, Object>();
+			/*
+			 * 通过身份参数找出符合的条件
+			 */
+			if (conditionComparator.compare(currentUserValueMap, cIdentifyParamMap, eventParamMap, null)) {
+				filtedConditionIds.add(condition.getConditionId());
 			}
 		}
 	}
 
 	/**
-	 * 条件类别本地缓存
+	 * 条件本地缓存
 	 * 
 	 * @author zhouyanjun
 	 * @version 1.0 2014-3-16
 	 */
-	class ConditionCategoryDefineCache extends FileCache {
-		private Map<Integer, PlatformConditionCategoryDefine> conditionCategory;
+	class ConditionCache extends FileCache {
+		private Map<Integer, Condition> conditionMap;
 
-		public ConditionCategoryDefineCache(String filePath) {
+		public ConditionCache(String filePath) {
 			super(filePath);
 		}
 
 		@Override
 		protected void loadData() {
-			if (conditionCategory == null) {
-				conditionCategory = new HashMap<Integer, PlatformConditionCategoryDefine>();
-			} else {
-				conditionCategory.clear();
-			}
 			try {
-				JSONObject json = JSONObjUtil.file2JsonObject(getFile());
-				JSONListObj listObj = new JSONListObj(json);
-				TableVO<PlatformConditionCategoryDefine> table = new TableVO<PlatformConditionCategoryDefine>(
-					PlatformConditionCategoryDefine.class, listObj);
-				List<PlatformConditionCategoryDefine> list = table.getObjectList();
+				if (conditionMap == null) {
+					conditionMap = new HashMap<Integer, Condition>();
+				} else {
+					conditionMap.clear();
+				}
+				String fileContent = this.readFile();
+				JSONArray jsonArray = JSONArray.fromObject(fileContent);
+				@SuppressWarnings("unchecked")
+				List<Condition> list = (List<Condition>) JSONArray.toArray(
+					jsonArray, Condition.class);
 				if (list != null && !list.isEmpty()) {
-					for (PlatformConditionCategoryDefine c : list) {
-						conditionCategory.put(c.getICategoryId(), c);
+					for (Condition c : list) {
+						conditionMap.put(c.getConditionId(), c);
 					}
 				}
-			} catch (Exception e) {
-				Log.error(this.getClass(), e);
+			} catch (Exception e)
+			{
+				logger.error(e.getMessage(), e);
 			}
 		}
 
-		/** 获取平台条件类别定义 **/
-		public PlatformConditionCategoryDefine getConditionDefineByCondID(Integer condCategoryID) {
+		/** 获取条件 **/
+		public Condition getConditionByCondID(Integer conditionID) {
 			loadFile();
-			return conditionCategory.get(condCategoryID);
+			return conditionMap.get(conditionID);
 		}
 
-		/** 根 据事件号获取平台条件类别定义 **/
-		public List<PlatformConditionCategoryDefine> getConditionCategoryDefineByEventNO(String eventNO) {
+		/** 根据事件号获取条件 **/
+		public List<Condition> getConditionByEventNO(String eventNO) {
 			loadFile();
-			List<PlatformConditionCategoryDefine> list = new ArrayList<PlatformConditionCategoryDefine>();
-			if (conditionCategory.isEmpty()) return list;
-			for (Integer condID : conditionCategory.keySet()) {
-				String _eventNO = conditionCategory.get(condID).getCEvnetNo();
+			List<Condition> list = new ArrayList<Condition>();
+			if (conditionMap.isEmpty()) return list;
+			for (Integer condID : conditionMap.keySet()) {
+				String _eventNO = conditionMap.get(condID).getEventNo();
 				if (!eventNO.equals(_eventNO)) continue;
-				list.add(conditionCategory.get(condID));
+				list.add(conditionMap.get(condID));
 			}
 			return list;
 		}

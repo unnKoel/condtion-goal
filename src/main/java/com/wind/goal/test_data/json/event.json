@@ -1,1 +1,0 @@
-{"data":[["1011_2_1","login","登入事件","loginDay"],["1011_2_2","game_level","游戏等级事件","gameleve"],["1011_2_3","person_data","个人资料事件","is_person_sex,is_person_birth,is_person_photo"],["1011_2_4","game_search","今日搜搜事件",""],["1011_2_5","game_down","游戏下载事件",""]],"header":["cEvnetNo","cEventName","cEventExplain","cParamters"]}

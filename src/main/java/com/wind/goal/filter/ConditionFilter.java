@@ -4,16 +4,17 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
 import com.wind.goal.ConditionFilterException;
+import com.wind.goal.ParamterVO;
 import com.wind.goal.comparator.Comparator;
 import com.wind.goal.comparator.DefaultParamComparator;
 import com.wind.goal.comparator.ParamComparator;
-import com.wind.goal.comparator.SelfDefinedParamComparator;
 import com.wind.goal.comparator.ParamComparator.CompareParamVO;
+import com.wind.goal.comparator.SelfDefinedParamComparator;
 import com.wind.goal.event.Event;
 import com.wind.goal.event.EventCacheDAO;
 import com.wind.goal.handle.EventHandler;
-import com.wind.goal.vo.ParamterVO;
 
 /**
  * 条件过滤基类
@@ -26,7 +27,7 @@ public abstract class ConditionFilter implements EventHandler {
 	private Object conditions; // 条件收集器
 	protected ConditionComparator conditionComparator = new ConditionComparator(); // 条件比较器
 	protected ParamComparator defaultComparator = new DefaultParamComparator(); // 参数默认比较器
-	private Map<String, SelfDefinedParamComparator> paramComparator; // 自定义参数比较注册
+	private Map<String, SelfDefinedParamComparator> paramComparator; // 自定义参数比较器注册
 
 	@Override
 	public void handle(Event event) {
@@ -60,16 +61,24 @@ public abstract class ConditionFilter implements EventHandler {
 	 * @version 1.0 2014-3-20
 	 */
 	public class ConditionComparator implements Comparator {
-		// private Map<String, SelfDefinedParamComparator> paramComparator; //
-		// 自定义参数比较器
-		// private ParamComparator defaultComparator; // 默认参数比较器
 
+		/**
+		 * 
+		 * @param currentUserValueMap
+		 *            当前用户参数Map
+		 * @param satisfyClaimMap
+		 *            要求参数Map
+		 * @param eventParamMap
+		 *            事件传过来的参数Map
+		 * @param totalCompareParams
+		 * @return
+		 */
 		public boolean compare(Map<String, Object> currentUserValueMap, Map<String, Object> satisfyClaimMap,
 			Map<String, Object> eventParamMap, Map<ParamterVO, CompareParamVO> totalCompareParams) {
 			if (satisfyClaimMap.isEmpty()) return true;
 			List<Boolean> isSatifys = new ArrayList<Boolean>();
 			for (String conditionParamKey : satisfyClaimMap.keySet()) {
-				/**
+				/*
 				 * 收集比较参数
 				 */
 				Map<ParamterVO, CompareParamVO> compareParams = compareParamCollect(conditionParamKey, currentUserValueMap,
@@ -77,22 +86,21 @@ public abstract class ConditionFilter implements EventHandler {
 				if (totalCompareParams != null) {
 					totalCompareParams.putAll(compareParams);
 				}
-				/**
+				/*
 				 * 如果参数注册了自定义比较器
 				 */
 				if (paramComparator.containsKey(conditionParamKey)) {
 					isSatifys.add(paramComparator.get(conditionParamKey).compare(compareParams, event));
 				} else {
-					/**
+					/*
 					 * 没注册自定义比较器，使用默认比较器比较
 					 */
 					isSatifys.add(defaultComparator.compare(compareParams, event));
 				}
-				/**
+				/*
 				 * 更新
 				 */
 			}
-			// updateUserValueMap(currentUserValueMap, totalCompareParams);
 			if (!isSatifys.contains(false)) {
 				return true;
 			} else {
@@ -115,8 +123,10 @@ public abstract class ConditionFilter implements EventHandler {
 		 */
 		private Map<ParamterVO, CompareParamVO> compareParamCollect(String conditionParamKey,
 			Map<String, Object> currentUserValueMap, Map<String, Object> satisfyClaimMap, Map<String, Object> eventParamMap) {
+			// 根据键取得条件参数设置
 			ParamterVO paramterVO = EventCacheDAO.getEventParameterByName(conditionParamKey);
 			String[] relativeParams = paramterVO.getRelativeParams();
+			// 使用条件参数要求值，当前值和事件传过来的值组成参数比较器
 			Map<ParamterVO, CompareParamVO> compareParams = new HashMap<ParamterVO, CompareParamVO>();
 			Object satisfyValue = satisfyClaimMap.get(conditionParamKey);
 			Object userCurrValue = currentUserValueMap.get(conditionParamKey);

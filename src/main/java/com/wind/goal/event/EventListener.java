@@ -1,8 +1,10 @@
 package com.wind.goal.event;
 
 import java.util.List;
-import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
-import com.d1xn.common.log.Log;
+import java.util.concurrent.ExecutorService;
+
+import org.apache.log4j.Logger;
+
 import com.wind.goal.handle.EventHandler;
 
 /**
@@ -12,7 +14,8 @@ import com.wind.goal.handle.EventHandler;
  * @version 1.0 2014-3-10
  */
 public class EventListener {
-	private static ThreadPoolTaskExecutor threadPool;
+	private static final Logger logger = Logger.getLogger(EventListener.class);
+	private static ExecutorService threadPool; // 线程池
 	private static List<EventHandler> handleList;
 
 	public static void onEvent(final Event event) {
@@ -23,7 +26,7 @@ public class EventListener {
 					try {
 						handleEvent(event);
 					} catch (Exception e) {
-						Log.error(this.getClass(), e);
+						logger.error(this.getClass(), e);
 					}
 				}
 			});
@@ -40,11 +43,11 @@ public class EventListener {
 		}
 	}
 
-	public ThreadPoolTaskExecutor getThreadPool() {
+	public static ExecutorService getThreadPool() {
 		return threadPool;
 	}
 
-	public void setThreadPool(ThreadPoolTaskExecutor threadPool) {
+	public static void setThreadPool(ExecutorService threadPool) {
 		EventListener.threadPool = threadPool;
 	}
 

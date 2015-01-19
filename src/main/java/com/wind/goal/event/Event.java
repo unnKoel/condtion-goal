@@ -36,7 +36,7 @@ public class Event extends EventObject {
 	/**
 	 * 用户ID
 	 */
-	private Long userId;
+	private Integer userId;
 
 	public void putParam(String paramName, Object paramValue) {
 		eventParamMap.put(paramName, paramValue);
@@ -66,11 +66,11 @@ public class Event extends EventObject {
 		this.paramKeys = paramKeys;
 	}
 
-	public Long getUserId() {
+	public Integer getUserId() {
 		return userId;
 	}
 
-	public void setUserId(Long userId) {
+	public void setUserId(Integer userId) {
 		this.userId = userId;
 	}
 }

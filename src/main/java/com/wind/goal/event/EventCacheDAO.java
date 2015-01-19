@@ -3,15 +3,14 @@ package com.wind.goal.event;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import com.d1xn.common.base.FileCache;
-import com.d1xn.common.json.JSONListObj;
-import com.d1xn.common.json.JSONObject;
-import com.d1xn.common.log.Log;
-import com.d1xn.common.rest.TableVO;
-import com.d1xn.common.util.JSONObjUtil;
-import com.wind.goal.res.PlatformEventDefine;
-import com.wind.goal.res.PlatformParameterDefine;
-import com.wind.goal.vo.ParamterVO;
+
+import net.sf.json.JSONArray;
+
+import org.apache.log4j.Logger;
+
+import com.wind.goal.FileCache;
+import com.wind.goal.ParamterVO;
+import com.wind.goal.dao.po.Parameter;
 
 /**
  * 事件相关Cache，包括事件、事件参数缓存
@@ -31,6 +30,7 @@ public class EventCacheDAO {
 
 	// 静态实例
 	private static final EventCacheDAO instance = new EventCacheDAO();
+	private static final Logger logger = Logger.getLogger(EventCacheDAO.class);
 
 	/** 构造函数 **/
 	private EventCacheDAO() {
@@ -55,7 +55,7 @@ public class EventCacheDAO {
 	 *            事件号
 	 * @return 事件
 	 */
-	public static PlatformEventDefine getEventByeventNO(String eventNO) {
+	public static Event getEventByeventNO(String eventNO) {
 		return getInstance().getEventCache().getEventByEventNO(eventNO);
 	}
 
@@ -67,13 +67,13 @@ public class EventCacheDAO {
 	 * @return 参数
 	 */
 	public static ParamterVO getEventParameterByName(String paramName) {
-		PlatformParameterDefine paramterDefine = getInstance().getEventParamCache().getEventParamByName(paramName);
+		Parameter paramterDefine = getInstance().getEventParamCache().getEventParamByName(paramName);
 		ParamterVO paramterVO = paramterDefine.getParamterVO();
 		return paramterVO;
 	}
 
 	class EventCache extends FileCache {
-		private Map<String, PlatformEventDefine> eventMap;
+		private Map<String, Event> eventMap;
 
 		public EventCache(String filePath) {
 			super(filePath);
@@ -82,34 +82,35 @@ public class EventCacheDAO {
 		@Override
 		protected void loadData() {
 			if (eventMap == null) {
-				eventMap = new HashMap<String, PlatformEventDefine>();
+				eventMap = new HashMap<String, Event>();
 			} else {
 				eventMap.clear();
 			}
 			try {
-				JSONObject json = JSONObjUtil.file2JsonObject(getFile());
-				JSONListObj listObj = new JSONListObj(json);
-				TableVO<PlatformEventDefine> table = new TableVO<PlatformEventDefine>(PlatformEventDefine.class, listObj);
-				List<PlatformEventDefine> list = table.getObjectList();
+				String fileContent = this.readFile();
+				JSONArray jsonArray = JSONArray.fromObject(fileContent);
+				@SuppressWarnings("unchecked")
+				List<Event> list = (List<Event>) JSONArray.toArray(jsonArray,
+					Event.class);
 				if (list != null && !list.isEmpty()) {
-					for (PlatformEventDefine c : list) {
-						eventMap.put(c.getCEvnetNo(), c);
+					for (Event c : list) {
+						eventMap.put(c.getEventNO(), c);
 					}
 				}
 			} catch (Exception e) {
-				Log.error(this.getClass(), e);
+				logger.error(this.getClass(), e);
 			}
 		}
 
 		/** 获取平台条件定义 **/
-		public PlatformEventDefine getEventByEventNO(String EventNO) {
+		public Event getEventByEventNO(String EventNO) {
 			loadFile();
 			return eventMap.get(EventNO);
 		}
 	}
 
 	class EventParamCache extends FileCache {
-		private Map<String, PlatformParameterDefine> eventParamMap;
+		private Map<String, Parameter> eventParamMap;
 
 		public EventParamCache(String filePath) {
 			super(filePath);
@@ -118,28 +119,28 @@ public class EventCacheDAO {
 		@Override
 		protected void loadData() {
 			if (eventParamMap == null) {
-				eventParamMap = new HashMap<String, PlatformParameterDefine>();
+				eventParamMap = new HashMap<String, Parameter>();
 			} else {
 				eventParamMap.clear();
 			}
 			try {
-				JSONObject json = JSONObjUtil.file2JsonObject(getFile());
-				JSONListObj listObj = new JSONListObj(json);
-				TableVO<PlatformParameterDefine> table = new TableVO<PlatformParameterDefine>(PlatformParameterDefine.class,
-					listObj);
-				List<PlatformParameterDefine> list = table.getObjectList();
+				String fileContent = this.readFile();
+				JSONArray jsonArray = JSONArray.fromObject(fileContent);
+				@SuppressWarnings("unchecked")
+				List<Parameter> list = (List<Parameter>) JSONArray.toArray(jsonArray,
+					Parameter.class);
 				if (list != null && !list.isEmpty()) {
-					for (PlatformParameterDefine c : list) {
-						eventParamMap.put(c.getCName(), c);
+					for (Parameter c : list) {
+						eventParamMap.put(c.getName(), c);
 					}
 				}
 			} catch (Exception e) {
-				Log.error(this.getClass(), e);
+				logger.error(this.getClass(), e);
 			}
 		}
 
 		/** 获取平台条件定义 **/
-		public PlatformParameterDefine getEventParamByName(String paramName) {
+		public Parameter getEventParamByName(String paramName) {
 			loadFile();
 			return eventParamMap.get(paramName);
 		}

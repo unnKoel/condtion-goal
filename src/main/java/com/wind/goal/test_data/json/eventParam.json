@@ -1,1 +1,0 @@
-{"data":[["quary","日期","day","=","2"],["int","游戏角色等级","gamelevel","=","1"],["string","个人出生日期","is_person_birth","=","2"],["string","个人头像","is_person_photo","=","2"],["string","个人性别","is_person_sex","=","2"],["int","登入天数","loginDay","=","1"]],"header":["cType","sName","cName","cOperate","cChange"]}

@@ -1,8 +1,9 @@
 package com.wind.goal.comparator;
 
 import java.util.Map;
+
+import com.wind.goal.ParamterVO;
 import com.wind.goal.event.Event;
-import com.wind.goal.vo.ParamterVO;
 
 /**
  * 默认参数比较器
